@@ -1,0 +1,37 @@
+
+    modified:   drivers/usb/gadget/function/Makefile
+    modified:   drivers/usb/gadget/function/f_ram_storage.c
+    modified:   drivers/usb/gadget/function/ram_storage.h
+    modified:   drivers/usb/gadget/legacy/Kconfig
+    modified:   drivers/usb/gadget/legacy/ram_storage.c
+
+    $ git status
+On branch master
+Your branch is up to date with 'origin/master'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git checkout -- <file>..." to discard changes in working directory)
+
+	modified:   drivers/usb/gadget/function/Makefile
+	modified:   drivers/usb/gadget/legacy/Kconfig
+	modified:   drivers/usb/gadget/legacy/Makefile
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+
+	arch/x86/configs/edison_defconfig
+	crypto/asymmetric_keys/pkcs7-asn1.c
+	crypto/asymmetric_keys/pkcs7-asn1.h
+	crypto/asymmetric_keys/x509-asn1.c
+	crypto/asymmetric_keys/x509-asn1.h
+	crypto/asymmetric_keys/x509_akid-asn1.c
+	crypto/asymmetric_keys/x509_akid-asn1.h
+	crypto/rsaprivkey-asn1.c
+	crypto/rsaprivkey-asn1.h
+	crypto/rsapubkey-asn1.c
+	crypto/rsapubkey-asn1.h
+	drivers/github/
+	drivers/usb/gadget/function/f_ram_storage.c
+	drivers/usb/gadget/function/ram_storage.h
+	drivers/usb/gadget/legacy/ram_storage.c

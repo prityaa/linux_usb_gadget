@@ -1,0 +1,471 @@
+
+1 . modprobe g_test
+
+2 . module_usb_composite_driver(test_driver);
+	drivers/usb/gadget/legacy/test.c
+
+#define module_usb_composite_driver(__usb_composite_driver) \
+	module_driver(__usb_composite_driver, usb_composite_probe, \
+			usb_composite_unregister)
+	include/linux/usb/composite.h
+
+3 . usb_composite_probe : register a composite driver
+	drivers/usb/gadget/composite.c
+
+	calls :
+	-	usb_gadget_probe_driver
+
+4 . usb_gadget_probe_driver : find driver in all udc list
+	drivers/usb/gadget/composite.c
+
+	calls :
+	-	udc_bind_to_driver
+
+5 . udc_bind_to_driver :
+		calls driver's bind
+		tells usb device controller to start up
+	drivers/usb/gadget/udc/udc-core.c
+
+	calls :
+	-	driver->bind == test_bind which is member of
+		struct __usb_composite_driver (legacy).
+	-	usb_gadget_udc_start
+	-	usb_gadget_connect :
+		Enables the D+ (or potentially D-) pullup.  The host will start
+		enumeratin this gadget when the pullup is active and a VBUS session
+		is active (link is powered). Ths pullup is always enabled unless
+		usb_gadget_disconnect() has bn used to disable it.
+
+	-	kobject_uevent : informs uevent frame.
+
+6 . test_bind : gets function name as described in "function/f_test.c"
+	drivers/usb/gadget/legacy/test.c
+
+	calls :
+	-	usb_get_function_instance("usb_bulk");
+	-	usb_string_ids_tab
+	-	usb_add_config
+
+
+
+7 . usb_get_function_instance :
+		insert function module having
+	usb_function_driver.name as "usb_bulk" like =>
+	DECLARE_USB_FUNCTION(usb_bulk, usb_bulk_alloc_inst, usb_bulk_alloc_func);
+
+
+	drivers/usb/gadget/functions.c
+
+	calls :
+	-	usb_get_function_instance
+	-	usb_bulk_init
+
+
+8 . try_get_usb_function_instance :  for each func list, it calls function's
+	alloc_inst i.e. usb_bulk_alloc_inst
+
+	drivers/usb/gadget/functions.c
+
+	calls :
+		alloc_inst => usb_bulk_alloc_inst : alloc mem for f_test_opts
+
+9 . usb_bulk_init : registered
+	drivers/usb/gadget/function/f_usb_bulk.c
+		calls :
+			usb_function_register
+			alloc_chrdev_region
+			class_create
+			device_create
+
+10 . usb_string_ids_tab : allocate unused string IDs in batch
+	drivers/usb/gadget/composite.c
+
+11 . usb_add_config :  add a configuration to a device.
+	drivers/usb/gadget/composite.c
+
+	calls :
+	-	test_config_bind  : in form of function ptr as a argument.
+	-
+12 . test_config_bind
+	drivers/usb/gadget/legacy/test.c
+
+	calls :
+	-	usb_get_function
+	-	usb_add_function :
+
+13 . usb_get_function :
+	drivers/usb/gadget/functions.c
+
+	calls :
+		fi->fd->alloc_func : function's usb_bulk_alloc_func
+
+14 . usb_add_function : add a function to a configuration
+	drivers/usb/gadget/composite.c
+
+	calls :
+		calls function's function->bind .i.e. usb_bulk_bind
+
+15 . usb_bulk_bind :
+	drivers/usb/gadget/function/f_usb_bulk.c
+
+	calls :
+		usb_ep_autoconfig for inep
+		usb_ep_autoconfig for outep
+		usb_assign_descriptors	for hs and fs
+
+
+16 .
+
+==============================================================================================
+
+usb dwc3 core
+1 . registering it as platform devices
+dwc3_probe :
+	allocing for dwc3
+	devm_ioremap_resource for mem resion
+	dwc3_core_get_phy
+	registering to PM pm_runtime_enable
+	dwc3_core_init Low-level initialization of DWC3 Core
+	dwc3_core_init_mode
+		dwc3_gadget_init \
+			usb_add_gadget_udc
+		dwc3_host_init
+	usb_phy_set_suspend
+	phy_power_on
+
+============================================================================
+dwc3 standard req and packets
+============================================================================
+dwc3_ep0_delegate_req
+	dwc->gadget_driver->setup => composite_setup
+
+dwc3_ep0_std_request
+	USB_REQ_GET_STATUS:
+	USB_REQ_CLEAR_FEATURE:
+	USB_REQ_SET_FEATURE:
+	USB_REQ_SET_ADDRESS:
+	USB_REQ_SET_CONFIGURATION:
+	USB_REQ_SET_SEL:
+	USB_REQ_SET_ISOCH_DELAY:
+
+dwc3_ep0_inspect_setup
+	dwc3_ep0_delegate_req
+	dwc3_ep0_std_request
+
+
+dwc3_ep0_xfer_complete
+	dwc3_ep0_inspect_setup
+	dwc3_ep0_complete_data
+	dwc3_ep0_complete_status
+
+dwc3_ep0_interrupt
+	dwc3_ep0_xfer_complete
+
+dwc3_endpoint_interrupt
+
+dwc3_process_event_entry
+	dwc3_gadget_interrupt
+	dwc3_gadget_interrupt
+
+dwc3_process_event_buf		drivers/usb/dwc3/gadget.c
+
+dwc3_thread_interrupt
+
+dwc3_gadget_start
+	ret = request_threaded_irq(irq, dwc3_interrupt, dwc3_thread_interrupt,
+		                        IRQF_SHARED, "dwc3", dwc->ev_buf);
+
+==============================================================================
+
+calling udc start
+
+gadget_dev_desc_UDC_store
+	usb_gadget_probe_driver
+
+usb_gadget_probe_driver		drivers/usb/gadget/udc/core.c
+	udc_bind_to_driver
+
+udc_bind_to_driver
+	usb_gadget_udc_start
+
+usb_gadget_udc_start
+	udc->gadget->ops->udc_start = dwc3_gadget_start
+
+dwc3_gadget_start : enabling i/r
+============================================================================
+
+remove driver using configfs
+
+
+gadget_dev_desc_UDC_store
+	android_disconnect
+
+dump_stack()
+	[  697.276651] [<ffffffff813f5f9c>] dump_stack+0x70/0xa4
+	[  697.276657] [<ffffffff81822bee>] android_disconnect+0x2e/0x90
+	[  697.276661] [<ffffffff818249c6>] usb_gadget_remove_driver+0x56/0xa0
+	[  697.276664] [<ffffffff81824fb7>] usb_gadget_unregister_driver+0x97/0xd0
+	[  697.276667] [<ffffffff818228a7>] unregister_gadget+0x27/0x60
+	[  697.276670] [<ffffffff81822b34>] gadget_dev_desc_UDC_store+0x84/0x110
+	[  697.276674] [<ffffffff812a4fe0>] configfs_write_file+0xc0/0x120
+	[  697.276679] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+	[  697.276683] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+	[  697.276688] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+	[  697.276691] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+	[  697.276694] [<ffffffff81220258>] SyS_write+0x58/0xc0
+	[  697.276698] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+	[  697.276702] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+
+unbind
+	[  697.276740] [<ffffffff81837065>] ffs_func_disable+0x25/0x40
+	[  697.276743] [<ffffffff8181d09e>] reset_config+0x3e/0xa0
+	[  697.276746] [<ffffffff8181debb>] composite_disconnect+0x3b/0x90
+	[  697.276749] [<ffffffff81822c1f>] android_disconnect+0x5f/0x90
+	[  697.276752] [<ffffffff818249c6>] usb_gadget_remove_driver+0x56/0xa0
+	[  697.276755] [<ffffffff81824fb7>] usb_gadget_unregister_driver+0x97/0xd0
+	[  697.276757] [<ffffffff818228a7>] unregister_gadget+0x27/0x60
+	[  697.276760] [<ffffffff81822b34>] gadget_dev_desc_UDC_store+0x84/0x110
+	[  697.276763] [<ffffffff812a4fe0>] configfs_write_file+0xc0/0x120
+	[  697.276766] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+	[  697.276769] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+	[  697.276772] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+	[  697.276775] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+	[  697.276777] [<ffffffff81220258>] SyS_write+0x58/0xc0
+	[  697.276780] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+	[  697.276783] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+ffs_func_disable
+	ffs_func_set_alt
+
+	[  697.276740] [<ffffffff81837065>] ffs_func_disable+0x25/0x40
+	[  697.276743] [<ffffffff8181d09e>] reset_config+0x3e/0xa0
+	[  697.276746] [<ffffffff8181debb>] composite_disconnect+0x3b/0x90
+	[  697.276749] [<ffffffff81822c1f>] android_disconnect+0x5f/0x90
+	[  697.276752] [<ffffffff818249c6>] usb_gadget_remove_driver+0x56/0xa0
+	[  697.276755] [<ffffffff81824fb7>] usb_gadget_unregister_driver+0x97/0xd0
+	[  697.276757] [<ffffffff818228a7>] unregister_gadget+0x27/0x60
+	[  697.276760] [<ffffffff81822b34>] gadget_dev_desc_UDC_store+0x84/0x110
+	[  697.276763] [<ffffffff812a4fe0>] configfs_write_file+0xc0/0x120
+	[  697.276766] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+	[  697.276769] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+	[  697.276772] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+	[  697.276775] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+	[  697.276777] [<ffffffff81220258>] SyS_write+0x58/0xc0
+	[  697.276780] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+	[  697.276783] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+*ffs_epfile_io_complete
+* dwc3_process_event_buf
+dwc3_thread_interrupt
+android_work : Workqueue: events android_work
+	informs to userspace through uevents that this event has occured and
+	action is taken accordingly.
+
+	eg.
+		ffs_epfile_ioctl
+		ffs_epfile_release closes device file
+			ffs_data_closed
+
+ffs_epfile_open : with OICTL, unbind the gadget driver by removing entry is configfs
+
+configfs-gadget gadget: unbind function 'Function FS Gadget'
+
+ffs_func_unbind
+	functionfs_unbind
+
+ffs_data_closed
+	ffs_data_put
+
+configfs_composite_unbind
+
+	[  697.279909] [<ffffffff813f5f9c>] dump_stack+0x70/0xa4
+	[  697.279915] [<ffffffff81821b74>] configfs_composite_unbind+0x74/0x80
+	[  697.279919] [<ffffffff818249d6>] usb_gadget_remove_driver+0x66/0xa0
+	[  697.279922] [<ffffffff81824fb7>] usb_gadget_unregister_driver+0x97/0xd0
+	[  697.279925] [<ffffffff818228a7>] unregister_gadget+0x27/0x60
+	[  697.279928] [<ffffffff81822b34>] gadget_dev_desc_UDC_store+0x84/0x110
+	[  697.279932] [<ffffffff812a4fe0>] configfs_write_file+0xc0/0x120
+	[  697.279936] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+	[  697.279941] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+	[  697.279945] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+	[  697.279949] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+	[  697.279951] [<ffffffff81220258>] SyS_write+0x58/0xc0
+	[  697.279956] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+	[  697.279960] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+__dwc3_gadget_stop
+
+	[  697.279986] [<ffffffff813f5f9c>] dump_stack+0x70/0xa4
+	[  697.279991] [<ffffffff8179df95>] __dwc3_gadget_stop+0x35/0x90
+	[  697.279994] [<ffffffff8179e049>] dwc3_gadget_stop+0x59/0x90
+	[  697.279997] [<ffffffff818249e7>] usb_gadget_remove_driver+0x77/0xa0
+	[  697.280000] [<ffffffff81824fb7>] usb_gadget_unregister_driver+0x97/0xd0
+	[  697.280003] [<ffffffff818228a7>] unregister_gadget+0x27/0x60
+	[  697.280005] [<ffffffff81822b34>] gadget_dev_desc_UDC_store+0x84/0x110
+	[  697.280008] [<ffffffff812a4fe0>] configfs_write_file+0xc0/0x120
+	[  697.280011] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+	[  697.280014] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+	[  697.280017] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+	[  697.280020] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+	[  697.280022] [<ffffffff81220258>] SyS_write+0x58/0xc0
+	[  697.280025] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+	[  697.280028] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+
+resume callback
+===============================================================================
+[  191.678325] [<ffffffff813f5f9c>] dump_stack+0x70/0xa4
+[  191.678332] [<ffffffff8179fa38>] dwc3_gadget_resume+0x38/0x70
+[  191.678336] [<ffffffff8179806f>] dwc3_resume_common+0x6f/0x80
+[  191.678342] [<ffffffff8165bb30>] ? platform_drv_shutdown+0x30/0x30
+[  191.678346] [<ffffffff81798167>] dwc3_resume+0x47/0x80
+[  191.678350] [<ffffffff8165bb5e>] platform_pm_resume+0x2e/0x50
+[  191.678356] [<ffffffff819a3556>] dpm_run_callback+0xd1/0x168
+[  191.678360] [<ffffffff8165bb30>] ? platform_drv_shutdown+0x30/0x30
+[  191.678364] [<ffffffff81666e80>] device_resume+0x130/0x2d0
+[  191.678367] [<ffffffff81668868>] dpm_resume+0x118/0x310
+[  191.678371] [<ffffffff81668e61>] dpm_resume_end+0x11/0x20
+[  191.678378] [<ffffffff810f8940>] suspend_devices_and_enter+0x150/0x1e0
+[  191.678382] [<ffffffff810f8de7>] pm_suspend+0x417/0x460
+[  191.678386] [<ffffffff810f7661>] state_store+0x81/0xb0
+[  191.678390] [<ffffffff813f83b2>] kobj_attr_store+0x12/0x20
+[  191.678396] [<ffffffff812a2e9c>] sysfs_kf_write+0x3c/0x50
+[  191.678400] [<ffffffff812a239d>] kernfs_fop_write+0x11d/0x1a0
+[  191.678405] [<ffffffff8121d96a>] __vfs_write+0x3a/0x150
+[  191.678411] [<ffffffff813902ad>] ? selinux_file_permission+0xdd/0x130
+[  191.678416] [<ffffffff81415383>] ? __this_cpu_preempt_check+0x13/0x20
+[  191.678420] [<ffffffff8121ec71>] vfs_write+0xb1/0x1a0
+[  191.678424] [<ffffffff81220258>] SyS_write+0x58/0xc0
+[  191.678428] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+[  191.678434] [<ffffffff81c4bf20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+
+
+func				defined-in			caller
+sysfs 								drivers/md/md.c
+state_store			kernel/power/main.c	 	kernel/power/main.c
+pm_suspend			kernel/power/suspend.c		kernel/power/main.c
+
+enter_state 			Do common work needed to enter system sleep state.
+				kernel/power/suspend.c		kernel/power/suspend.c
+	suspend_prepare	- locks console
+		__pm_notifier_call_chain - Call functions in a blocking notifier chain (process context)
+	suspend_devices_and_enter
+
+suspend_devices_and_enter 	Suspend devices and enter system sleep state.
+	platform_suspend_begin
+	suspend_console
+	suspend_test_start
+	dpm_suspend_start
+	suspend_enter
+				kernel/power/suspend.c		kernel/power/suspend.c
+
+dpm_suspend_start 		Prepare devices for PM transition and suspend them.
+	dpm_suspend
+				drivers/base/power/main.c	kernel/power/suspend.c
+
+dpm_suspend 			Execute "suspend" callbacks for all non-sysdev devices
+	for all dpm_prepared_list
+	device_suspend
+				drivers/base/power/main.c	drivers/base/power/main.c
+
+
+
+device_suspend 			kernel/power/suspend.c		drivers/base/power/main.c
+	__device_suspend
+
+async_schedule drivers/base/power/main.c
+async_suspend drivers/base/power/main.c
+
+__device_suspend 		Execute "suspend" callbacks for given device.
+				drivers/base/power/main.c
+dpm_run_callback 		calls USE_PLATFORM_PM_SLEEP_OPS in bus i.e. dev->bus->pm == platform_pm_suspend,
+	platform_pm_suspend
+				drivers/base/power/main.c
+platform_pm_suspend
+	drv->pm->suspend(dev)
+				drivers/base/platform.c		drivers/base/power/main.c
+dwc3_suspend
+
+suspend_enter			Make the system enter the given sleep state
+	dpm_suspend_late
+		for all devices
+		device_suspend_late
+			__device_suspend_late
+				dpm_wait_for_children
+	dpm_suspend_noirq
+
+supsend callback
+
+[   79.860670] [<ffffffff813f5fac>] dump_stack+0x70/0xa4
+[   79.860680] [<ffffffff81786117>] dwc3_gadget_suspend+0x37/0x70
+[   79.860686] [<ffffffff8177d639>] dwc3_suspend_common+0x39/0x60
+[   79.860692] [<ffffffff8177d71f>] dwc3_suspend+0x3f/0x60
+[   79.860701] [<ffffffff816423ac>] platform_pm_suspend+0x2c/0x50
+[   79.860707] [<ffffffff8164d04a>] dpm_run_callback+0x5a/0x180
+[   79.860713] [<ffffffff81642380>] ? platform_drv_shutdown+0x30/0x30
+[   79.860719] [<ffffffff8164e40a>] __device_suspend+0x16a/0x480
+[   79.860728] [<ffffffff810d18d5>] ? wake_up_process+0x15/0x20
+[   79.860741] [<ffffffff810cc6e4>] ? preempt_count_add+0x74/0xc0
+[   79.860735] [<ffffffff810bc140>] ? insert_work+0x70/0xc0
+[   79.860750] [<ffffffff81c309a8>] ? _raw_spin_unlock+0x18/0x30
+[   79.860756] [<ffffffff810bc2a6>] ? __queue_work+0x116/0x480
+[   79.860762] [<ffffffff8164e720>] ? __device_suspend+0x480/0x480
+[   79.860770] [<ffffffff810c7075>] ? __async_schedule+0x165/0x190
+[   79.860776] [<ffffffff8164ff81>] dpm_suspend+0x121/0x300
+[   79.860782] [<ffffffff81650600>] dpm_suspend_start+0x50/0x60
+[   79.860790] [<ffffffff810f8913>] suspend_devices_and_enter+0xc3/0x2b0
+[   79.860797] [<ffffffff810f8e5d>] pm_suspend+0x35d/0x3d0
+[   79.860803] [<ffffffff810f7646>] state_store+0x66/0x90
+[   79.860809] [<ffffffff813f83c2>] kobj_attr_store+0x12/0x20
+[   79.860819] [<ffffffff812a2eac>] sysfs_kf_write+0x3c/0x50
+[   79.860825] [<ffffffff812a23ad>] kernfs_fop_write+0x11d/0x1a0
+[   79.860833] [<ffffffff8121d97a>] __vfs_write+0x3a/0x150
+[   79.860842] [<ffffffff813902bd>] ? selinux_file_permission+0xdd/0x130
+[   79.860850] [<ffffffff81415393>] ? __this_cpu_preempt_check+0x13/0x20
+[   79.860856] [<ffffffff8121ec81>] vfs_write+0xb1/0x1a0
+[   79.860862] [<ffffffff81220268>] SyS_write+0x58/0xc0
+[   79.860869] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+[   79.860876] [<ffffffff81c30f20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+dwc3_gadget_suspend
+[   80.259792] [<ffffffff813f5fac>] dump_stack+0x70/0xa4
+[   80.259798] [<ffffffff81786188>] dwc3_gadget_resume+0x38/0x70
+[   80.259802] [<ffffffff8177e914>] dwc3_resume_common+0x54/0x70
+[   80.259805] [<ffffffff8177ea17>] dwc3_resume+0x47/0x80
+[   80.259811] [<ffffffff816423fe>] platform_pm_resume+0x2e/0x50
+[   80.259815] [<ffffffff8164d04a>] dpm_run_callback+0x5a/0x180
+[   80.259819] [<ffffffff816423d0>] ? platform_pm_suspend+0x50/0x50
+[   80.259822] [<ffffffff8164d7ac>] device_resume+0xdc/0x2c0
+[   80.259825] [<ffffffff8164f188>] dpm_resume+0x118/0x310
+[   80.259827] [<ffffffff81650082>] ? dpm_suspend+0x222/0x300
+[   80.259831] [<ffffffff8164f781>] dpm_resume_end+0x11/0x20
+[   80.259837] [<ffffffff810f896c>] suspend_devices_and_enter+0x11c/0x2b0
+[   80.259841] [<ffffffff810f8e5d>] pm_suspend+0x35d/0x3d0
+[   80.259844] [<ffffffff810f7646>] state_store+0x66/0x90
+[   80.259848] [<ffffffff813f83c2>] kobj_attr_store+0x12/0x20
+[   80.259853] [<ffffffff812a2eac>] sysfs_kf_write+0x3c/0x50
+[   80.259857] [<ffffffff812a23ad>] kernfs_fop_write+0x11d/0x1a0
+[   80.259862] [<ffffffff8121d97a>] __vfs_write+0x3a/0x150
+[   80.259867] [<ffffffff813902bd>] ? selinux_file_permission+0xdd/0x130
+[   80.259872] [<ffffffff81415393>] ? __this_cpu_preempt_check+0x13/0x20
+[   80.259875] [<ffffffff8121ec81>] vfs_write+0xb1/0x1a0
+[   80.259879] [<ffffffff81220268>] SyS_write+0x58/0xc0
+[   80.259884] [<ffffffff81001fca>] do_syscall_64+0x6a/0xe0
+[   80.259889] [<ffffffff81c30f20>] entry_SYSCALL_64_after_swapgs+0x5d/0xd7
+
+
+__device_suspend
+__device_suspend_late Runtime PM is disabled for @dev while this function is being executed.
+__device_suspend_noirq  The driver of @dev will not receive interrupts while this function is being executed.
+
+device_resume_noirq
+device_resume_early
+device_resume
+
+3 . usb on wireshark
+sudo modprobe usbmon
+sudo setfacl -m u:$USER:r /dev/usbmon*
+sudo mount -t debugfs none /sys/kernel/debug && wireshark
+
